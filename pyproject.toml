@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "difPy"
+dynamic = ["version"]
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.26.4",
+    "pillow>=10.2.0"
+]
+
+[tool.setuptools]
+packages = { find = { where = ["."], include = ["difPy", "difPy.*"] } }
+
+[tool.setuptools.dynamic]
+version = { attr = "difPy.version.__version__" }
