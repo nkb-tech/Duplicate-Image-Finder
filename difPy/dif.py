@@ -147,7 +147,33 @@ class build:
                 if os.path.isdir(dir):
                     files = glob(str(dir) + '/**', recursive=self.__recursive)
                 elif os.path.isfile(dir):
-                    files = (dir, )
+                    if Path(dir).suffix == '.yaml':
+                        with open(dir, 'r') as f:
+                            yaml_data = yaml.load(f, Loader=yaml.SafeLoader)
+                        yaml_sources = []
+                        yaml_base_path = Path(yaml_data['path']) if 'path' in yaml_data.keys() else Path('/')
+                        if 'train' in yaml_data.keys():
+                            yaml_sources.extend(map(lambda p: yaml_base_path / p, yaml_data['train']))
+                        if 'val' in yaml_data.keys():
+                            yaml_sources.extend(map(lambda p: yaml_base_path / p, yaml_data['val']))
+                        if 'test' in yaml_data.keys():
+                            yaml_sources.extend(map(lambda p: yaml_base_path / p, yaml_data['test']))
+                        files = []
+                        for p in yaml_sources:
+                            if p.is_dir():
+                                files += glob(str(p / "**" / "*.*"), recursive=True)
+                            elif p.is_file():  # file
+                                with open(p) as t:
+                                    t = t.read().strip().splitlines()
+                                    parent = str(p.parent) + os.sep
+                                    files += [x.replace("./", parent) if x.startswith("./") else x for x in t]
+                            else:
+                                raise FileNotFoundError(f"{p} does not exist")
+                        files = sorted(x.replace("/", os.sep) for x in files)
+                    else:
+                        files = [dir]
+                else:
+                    files = []
                 valid_files, skip_files = self._validate_files(files)
                 valid_files_all = np.concatenate((valid_files_all, valid_files), axis=None)
                 if len(skip_files) > 0:
