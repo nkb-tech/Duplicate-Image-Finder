@@ -20,9 +20,9 @@
 pip install difPy
 ```
 
-> :point_right: :new: **difPy v4** is out! difPy v4 comes with up to **10x more performance** than previous difPy versions. Check out the [release notes](https://github.com/elisemercury/Duplicate-Image-Finder/releases/) for details. 
+> ✨🚀 **Join the [difPy for Desktop beta tester](https://difpy.short.gy/desktop-beta-ghb) program and be among to first to test the new difPy desktop app!**
 
-> :open_hands: Our motto? We :heart: Open Source! **Contributions and new ideas for difPy are always welcome** - check our [Contributor Guidelines](https://difpy.readthedocs.io/en/latest/contributing.html) for more information.
+> :open_hands: Our motto? We :heart: Open Source! **Contributions and new ideas for difPy are always welcome** - check our [Contributor Guidelines](https://difpy.readthedocs.io/en/latest/03_contributing/contributing.html) for more information.
 
 Read more on how the algorithm of difPy works in my Medium article [Finding Duplicate Images with Python](https://towardsdatascience.com/finding-duplicate-images-with-python-71c04ec8051).
 
@@ -44,7 +44,7 @@ difPy leverages Python's **multiprocessing capabilities** and is therefore able 
 2. [Output](https://github.com/elisemercury/Duplicate-Image-Finder#output)
 3. [Additional Parameters](https://github.com/elisemercury/Duplicate-Image-Finder#additional-parameters)
 4. [CLI Usage](https://github.com/elisemercury/Duplicate-Image-Finder#cli-usage)
-5. [difPy Web App](https://github.com/elisemercury/Duplicate-Image-Finder#difpy-web-app)
+5. [difPy for Desktop](https://github.com/elisemercury/Duplicate-Image-Finder#difpy-for-desktop)
 
 ## Basic Usage
 To make difPy search for duplicates **within one folder**:
@@ -69,7 +69,7 @@ Folder paths can be specified as standalone Python strings, or within a list. Wi
 ## Output
 difPy returns various types of output that you may use depending on your use case: 
 
-### I. Search Result Dictionary
+### I. Search Result
 A **JSON formatted collection** of duplicates/similar images (i. e. **match groups**) that were found. Each match group has a primary image (the key of the dictionary) which holds the list of its duplicates including their filename and MSE (Mean Squared Error). The lower the MSE, the more similar the primary image and the matched images are. Therefore, an MSE of 0 indicates that two images are exact duplicates.
 
 ```python
@@ -84,7 +84,7 @@ search.result
 ``` 
 
 ### II. Lower Quality Files
-A **list** of duplicates/similar images that have the **lowest quality** among match groups: 
+A **list** of duplicates/similar images that have the **lowest quality** (image resolution) among match groups: 
 
 ```python
 search.lower_quality
@@ -105,7 +105,7 @@ Or **deleted**:
 search.delete(silent_del=False)
 ```
 
-### III. Process Statistics
+### III. Search Statistics
 
 A **JSON formatted collection** with statistics on the completed difPy processes:
 
@@ -121,21 +121,21 @@ search.stats
                                       'in_folder': False,
                                       'limit_extensions': True,
                                       'px_size': 50,
-                                      'processes': 5},
-                        'total_files': {'count': 3232},
-                        'invalid_files': {'count': 0, 
-                                          'logs': {}}},
+                                      'processes': 5}},
              'search': {'duration': {'start': '2024-02-18T19:52:41.630027',
                                      'end': '2024-02-18T19:52:46.770077',
                                      'seconds_elapsed': 5.14},
                         'parameters': {'similarity_mse': 0,
                                        'rotate': True,
-                                       'lazy': True,
+                                       'same_dim': True,
                                        'processes': 5,
                                        'chunksize': None},
                         'files_searched': 3232,
                         'matches_found': {'duplicates': 3030, 
-                                          'similar': 0}}}}
+                                          'similar': 0}}},
+ 'total_files': {'count': 3232},
+ 'invalid_files': {'count': 0, 
+                   'logs': {}}}
 ```
 
 ## Additional Parameters
@@ -143,12 +143,12 @@ difPy supports the following parameters:
 
 ```python
 difPy.build(*directory, recursive=True, in_folder=False, limit_extensions=True, px_size=50, 
-            show_progress=True, processes=None)
+            show_progress=True, processes=os.cpu_count())
 ```
 
 ```python
-difPy.search(difpy_obj, similarity='duplicates', rotate=True, lazy=True, show_progress=True, 
-             processes=None, chunksize=None)
+difPy.search(difpy_obj, similarity='duplicates', rotate=True, same_dim=True, show_progress=True, 
+             processes=os.cpu_count(), chunksize=None)
 ```
 
 :notebook: For a **detailed usage guide**, please view the official **[difPy Usage Documentation](https://difpy.readthedocs.io/)**.
@@ -172,14 +172,14 @@ difPy CLI supports the following arguments:
 dif.py [-h] [-D DIRECTORY [DIRECTORY ...]] [-Z OUTPUT_DIRECTORY] 
        [-r {True,False}] [-i {True,False}] [-le {True,False}] 
        [-px PX_SIZE]  [-s SIMILARITY] [-ro {True,False}]
-       [-la {True,False}] [-proc PROCESSES] [-ch CHUNKSIZE] 
+       [-dim {True,False}] [-proc PROCESSES] [-ch CHUNKSIZE] 
        [-mv MOVE_TO] [-d {True,False}] [-sd {True,False}]
        [-p {True,False}]
 ```
 
 | | Parameter | | Parameter |
 | :---: | ------ | :---: | ------ | 
-| `-D` | directory | `-la` | lazy |
+| `-D` | directory | `-dim` | same_dim |
 | `-Z` | output_directory | `-proc` | processes | 
 | `-r`| recursive | `-ch` | chunksize |
 | `-i`| in_folder | `-mv` | move_to |
@@ -200,15 +200,11 @@ difPy_xxx_stats.json
 
 :notebook: For a **detailed usage guide**, please view the official **[difPy Usage Documentation](https://difpy.readthedocs.io/)**.
 
-## difPy Web App
+## difPy for Desktop
 
-difPy can also be accessed via a browser. With difPy Web, you can compare **up to 200 images** and download a **deduplicated ZIP file** - all powered by difPy. [Read more](https://github.com/elisemercury/difPy-app). 
+The new difPy desktop app brings difPy directly to your desktop. We are now accepting beta tester sign ups and will soon be starting our first tester access wave.
 
-:iphone: **Try the new [difPy Web App](https://difpy.app/)**!
-
-<p align="center">
-  <a href="https://difpy.app/"><img src="docs/static/assets/difPyweb_demo.gif" width="700" title="Demo: difPy Web App"></a>
-</p>
+✨🚀 **Join the [difPy for Desktop beta tester](https://difpy.short.gy/desktop-beta-ghb) program now and be among to first to test the new difPy desktop app!**
 
 -------
 

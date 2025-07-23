@@ -25,7 +25,7 @@ class build:
     '''
     A class used to initialize difPy and build its image repository
     '''
-    def __init__(self, *directory, recursive=True, in_folder=False, limit_extensions=True, px_size=50, show_progress=True, processes=None, **kwargs):
+    def __init__(self, *directory, recursive=True, in_folder=False, limit_extensions=True, px_size=50, show_progress=True, processes=os.cpu_count(), **kwargs):
         '''
         Parameters
         ----------
@@ -85,7 +85,7 @@ class build:
             _help._progress_bar(count, total_count, task='preparing files')
         
         # generate build statistics
-        stats = _generate_stats().build(start_time=start_time, end_time=end_time, total_files=len(filename_dictionary), invalid_files=invalid_files, skipped_files=skipped_files, directory=self.__directory, recursive=self.__recursive, in_folder=self.__in_folder, limit_extensions=self.__limit_extensions, px_size=self.__px_size, processes=self.__processes)
+        stats = _generate_stats.build(total_files=len(filename_dictionary), invalid_files=invalid_files, skipped_files=skipped_files, directory=self.__directory, start_time=start_time, end_time=end_time, recursive=self.__recursive, in_folder=self.__in_folder, limit_extensions=self.__limit_extensions, px_size=self.__px_size, processes=self.__processes)
 
         if self.__show_progress:
             count += 1
@@ -95,34 +95,57 @@ class build:
 
     def _get_files(self):
         # Function that searches for files in the input directories
-        valid_files_all = []
-        skipped_files_all = np.array([])
+        valid_files_all = np.array([], dtype=object)
+        skipped_files_all = np.array([], dtype=object)
+        
         if self.__in_folder:
             # search directories separately
-            directories = []
+            folder_files = []  # Temporary list to collect arrays for each folder
             for dir in self.__directory:
                 if os.path.isdir(dir):
-                    directories += glob(str(dir) + '/**/', recursive=self.__recursive)
+                    # For directory inputs, gather all files recursively if requested
+                    if self.__recursive:
+                        # Get all files using glob recursive pattern
+                        files = glob(str(dir) + '/**/*', recursive=True)
+                    else:
+                        # Only search immediate directory
+                        files = glob(str(dir) + '/*')
                 elif os.path.isfile(dir):
-                    files.append(dir)
-            for dir in directories:
-                files = glob(str(dir) + '/*', recursive=self.__recursive)
+                    files = [dir]
+                    
+                # Filter out directories from glob results
+                files = [f for f in files if not os.path.isdir(f)]
+                
                 valid_files, skip_files = self._validate_files(files)
-                valid_files_all.append(valid_files)
+                if len(valid_files) > 0:
+                    folder_files.append(valid_files)  # Collect valid file arrays
                 if len(skip_files) > 0:
-                    skipped_files_all = np.concatenate((skipped_files_all, skip_files), axis=None)
+                    skipped_files_all = np.concatenate((skipped_files_all, skip_files))
+            
+            if folder_files:  # If we found any valid files
+                valid_files_all = np.array(folder_files, dtype=object)  # Convert list of arrays to 2D array
 
         else:
             # search union of all directories
+            all_files = []
             for dir in self.__directory:
                 if os.path.isdir(dir):
-                    files = glob(str(dir) + '/**', recursive=self.__recursive)
+                    if self.__recursive:
+                        # Use same glob pattern as in_folder mode
+                        files = glob(str(dir) + '/**/*', recursive=True)
+                    else:
+                        files = glob(str(dir) + '/*')
+                    # Filter out directories
+                    files = [f for f in files if not os.path.isdir(f)]
+                    all_files.extend(files)
                 elif os.path.isfile(dir):
-                    files = (dir, )
-                valid_files, skip_files = self._validate_files(files)
-                valid_files_all = np.concatenate((valid_files_all, valid_files), axis=None)
-                if len(skip_files) > 0:
-                    skipped_files_all = np.concatenate((skipped_files_all, skip_files), axis=None)
+                    all_files.append(dir)
+                    
+            valid_files, skip_files = self._validate_files(all_files)
+            valid_files_all = np.array(valid_files, dtype=object)  # Convert to numpy array
+            if len(skip_files) > 0:
+                skipped_files_all = np.concatenate((skipped_files_all, skip_files))
+                        
         return valid_files_all, skipped_files_all
 
     def _validate_files(self, directory): 
@@ -201,19 +224,10 @@ class build:
                         filename_dictionary.update({img_id : valid_files[filename]})
                         tensor_dictionary.update({img_id : tensor})
                         count += 1         
-             
         return tensor_dictionary, id_to_shape_dictionary, filename_dictionary, id_to_group_dictionary, group_to_id_dictionary, invalid_files
 
     def _generate_tensor(self, num: int, file: str) -> dict | tuple:
-        """Function that generates a tensor of an image.
-
-        Args:
-            num (int): File number or id.
-            file (str): Filename string.
-
-        Returns:
-            dict | tuple: return a dictionary if there is an error, a tuple if success.
-        """
+        # Function that generates a tensor of an image.
         try:
             # Handle warnings as exceptions
             warnings.simplefilter('error', UserWarning)
@@ -237,7 +251,7 @@ class search:
     '''
     A class used to search for matches in a difPy image repository
     '''
-    def __init__(self, difpy_obj, similarity='duplicates', rotate=True, lazy=True, show_progress=True, processes=None, chunksize=None, **kwargs):
+    def __init__(self, difpy_obj, similarity='duplicates', rotate=True, same_dim=True, show_progress=True, processes=os.cpu_count(), chunksize=None, **kwargs):
         '''
         Parameters
         ----------
@@ -247,7 +261,7 @@ class search:
             Image comparison similarity threshold (mse) (default is 'duplicates', 0)
         rotate : bool (optional)
             Rotates images on comparison (default is True)
-        lazy : bool (optional)
+        same_dim : bool (optional)
             Only searches for duplicate/similar images that have the same dimensions (width x height in pixels) (default is True)
         show_progress : bool (optional)
             Show the difPy progress bar in console (default is True)
@@ -261,7 +275,7 @@ class search:
         self.__difpy_obj = difpy_obj
         self.__similarity = _validate_param._similarity(similarity)
         self.__rotate = _validate_param._rotate(rotate)
-        self.__lazy = _validate_param._lazy(lazy, self.__similarity)
+        self.__same_dim = _validate_param._same_dim(same_dim, self.__similarity)
         self.__show_progress = _validate_param._show_progress(show_progress)
         self.__processes = _validate_param._processes(processes)
         self.__chunksize = _validate_param._chunksize(chunksize)
@@ -271,7 +285,8 @@ class search:
         # Initialize multiprocessing
         _initialize_multiprocessing()
 
-        print("Initializing search...", end='\r')
+        if self.__show_progress:
+            print("Initializing search...", end='\r')
         self.result, self.lower_quality, self.stats = self._main()
         return
 
@@ -294,7 +309,7 @@ class search:
         end_time = datetime.now()
 
         # generate process stats
-        stats = _generate_stats().search(build_stats=self.__difpy_obj.stats, start_time=start_time, end_time=end_time, similarity = self.__similarity, rotate=self.__rotate, lazy=self.__lazy, processes=self.__processes, files_searched=len(self.__difpy_obj._tensor_dictionary), duplicate_count=duplicate_count, similar_count=similar_count, chunksize=self.__chunksize)
+        stats = _generate_stats.search(build_stats=self.__difpy_obj.stats, start_time=start_time, end_time=end_time, similarity = self.__similarity, rotate=self.__rotate, same_dim=self.__same_dim, processes=self.__processes, files_searched=len(self.__difpy_obj._tensor_dictionary), duplicate_count=duplicate_count, similar_count=similar_count, chunksize=self.__chunksize)
 
         return result, lower_quality, stats
 
@@ -329,16 +344,17 @@ class search:
                         result_raw = result_raw + output
                     self.__count += 1  
                     if self.__show_progress:
-                        print(self.__count, end="\r")
                         _help._progress_bar(self.__count, len(self.__difpy_obj._tensor_dictionary.keys())-1, task=f'searching files')     
 
         # format the end result
         result = self._group_result_union(result_raw)
+        
         return result
 
     def _search_infolder(self):
         # Function that performs search in isolated/separate directories
-        result_raw = list()
+        result = list()
+        # Get folder paths for each group
         grouped_img_ids = [img_ids for group_id, img_ids in self.__difpy_obj._group_to_id_dictionary.items()]
         self.__count = 0
 
@@ -351,7 +367,7 @@ class search:
                     for i in output:
                         if i:
                             # if matches found, add to result
-                            result_raw = self._add_to_result(result_raw, i)
+                            result = self._add_to_result(result, i)
                     self.__count += 1        
                 else:
                     # search algorithm for bigger datasets, > 5k images
@@ -362,14 +378,24 @@ class search:
                     for output in pool.imap_unordered(self._find_matches_batch, self._yield_comparison_group(), self.__chunksize):
                         if len(output) > 0:
                             # if matches found, add to result
-                            result_raw = result_raw + output
+                            result = result + output
                     self.__count += 1  
                 if self.__show_progress:
                     _help._progress_bar(self.__count, len(grouped_img_ids), task=f'searching files')
         
-        # format the end result
-        result = self._group_result_infolder(result_raw)
         return result
+
+    def _get_paths_from_groups(self):
+        # Helper function to map group IDs to their parent folder paths
+        folder_paths = {}
+        for group_id, img_ids in self.__difpy_obj._group_to_id_dictionary.items():
+            # Get the first image path from the group
+            if img_ids:
+                first_img_path = self.__difpy_obj._filename_dictionary[img_ids[0]]
+                # Get the parent folder path
+                folder_path = os.path.dirname(first_img_path)
+                folder_paths[group_id] = folder_path
+        return folder_paths
 
     def _format_result_union(self, result):
         # Helper function that replaces the image IDs in the result dictionary by their filename
@@ -384,7 +410,12 @@ class search:
         return updated_result
 
     def _format_result_infolder(self, result):
-        # Helper function that replaces the image IDs in the result dictionary by their filename
+        # Helper function that replaces the group IDs and image IDs in the result dictionary by their filepaths
+        # Replace group names
+        folder_paths = self._get_paths_from_groups()
+        result = self._group_result_infolder(result, folder_paths)
+
+        # Replace filenames
         updated_result = dict()
         for group_id in result.keys():
             for key, value in result[group_id].items():
@@ -407,7 +438,7 @@ class search:
         tensor_shape_A = self.__difpy_obj._id_to_shape_dictionary[id_A]
         tensor_shape_B = self.__difpy_obj._id_to_shape_dictionary[id_B]
 
-        if self.__lazy:
+        if self.__same_dim:
             # check if two tensors have the same dimensions
             if _compare_imgs._compare_shape(tensor_shape_A, tensor_shape_B): 
                 # check if two tensors are equal
@@ -438,7 +469,7 @@ class search:
         ids_B_list = np.asarray([x[1] for x in ids])
         tensor_B_list = np.asarray([self.__difpy_obj._tensor_dictionary[x[1]] for x in ids])
 
-        if self.__lazy:
+        if self.__same_dim:
             # compare only those that have the same shape
             shape_A_list = [sorted(self.__difpy_obj._id_to_shape_dictionary[id_A])]*len(ids)
             shape_B_list = [sorted(self.__difpy_obj._id_to_shape_dictionary[id_B]) for id_B in ids_B_list]
@@ -511,18 +542,19 @@ class search:
         del already_added
         return result
 
-    def _group_result_infolder(self, tuple_list):
-        # Function that formats the final result dict
+    def _group_result_infolder(self, tuple_list, folder_paths):
+        # Function that formats the final result dict using folder paths
         result = defaultdict(list)
         already_added = set()
         for k, *v in tuple_list:
             k_group = self.__difpy_obj._id_to_group_dictionary[k]
-            if k_group not in result:
-                result.update({k_group:{}})
+            folder_path = folder_paths[k_group]
+            if folder_path not in result:
+                result[folder_path] = {}
             if v[0] not in already_added:
-                if k not in result[k_group]:
-                    result[k_group].update({k:[]})
-                result[k_group][k].append(v)
+                if k not in result[folder_path]:
+                    result[folder_path].update({k: []})
+                result[folder_path][k].append(v)
                 already_added.add(v[0])
 
         result = dict(result)
@@ -608,7 +640,7 @@ class search:
                 os.remove(file)
                 deleted_files += 1
             except:
-                print(f'Could not delete file: {file}')
+                warnings.warn(f'Could not delete file: {file}', stacklevel=2)
 
         return deleted_files
 
@@ -628,7 +660,7 @@ class search:
                 os.replace(file, os.path.join(destination_path, tail))
                 new_lower_quality = np.append(new_lower_quality, str(Path(os.path.join(destination_path, tail))))
             except:
-                print(f'Could not move file: {file}')            
+                warnings.warn(f'Could not move file: {file}', stacklevel=2)          
         print(f'Moved {len(self.lower_quality)} files(s) to "{str(Path(destination_path))}"')
         self.lower_quality = new_lower_quality
         return  
@@ -702,66 +734,75 @@ class _compare_imgs:
         # Function for sorting a list of images based on their file sizes
         imgs_sizes = []
         for img in img_list:
-            img_size = (os.stat(str(img)).st_size, img)
+            with Image.open(img) as image:
+                resolution = image.size
+            img_size = (sum(resolution), img)
             imgs_sizes.append(img_size)
-        sort_by_size = [file for size, file in sorted(imgs_sizes, reverse=True)]
+        sort_by_size = [file for size, file in sorted(imgs_sizes, reverse=True)] # Highest first
         return sort_by_size
         
 class _generate_stats:
     '''
     A class for generating statistics on the difPy processes
     '''   
-    def __init__(self):
-        # Initialize the stats dict
-        self.stats = dict()
-
-    def build(self, **kwargs):
+    def build(**kwargs):
         # Function that generates stats for the Build process
-        seconds_elapsed = np.round((kwargs['end_time'] - kwargs['start_time']).total_seconds(), 4)
+        directory = kwargs['directory']
         total_files = kwargs['total_files']
         invalid_files = kwargs['invalid_files']
         for file in kwargs['skipped_files']:
             invalid_files.update({str(Path(file)) : 'Unsupported file type'})
-        self.stats.update({'directory' : kwargs['directory']})
-        
-        self.stats.update({'process' : {'build': {}}})   
-        self.stats['process']['build'].update({'duration' : {'start': kwargs['start_time'].isoformat(),
-                                                        'end' : kwargs['end_time'].isoformat(),
-                                                        'seconds_elapsed' : seconds_elapsed
-                                                       }})
-        self.stats['process']['build'].update({'parameters': {'recursive' : kwargs['recursive'],
-                                                         'in_folder' : kwargs['in_folder'],
-                                                         'limit_extensions' : kwargs['limit_extensions'],
-                                                         'px_size' : kwargs['px_size'],
-                                                         'processes' : kwargs['processes']
-                                                        }})
-        self.stats.update({'total_files' : total_files+len(invalid_files)})   
-        self.stats.update({'invalid_files': {'count' : len(invalid_files),
-                                               'logs' : invalid_files}})
-        
-        return self.stats
 
-    def search(self, **kwargs):
-        # Function that generates stats for the Search process
-        stats = kwargs['build_stats']
-        seconds_elapsed = np.round((kwargs['end_time'] - kwargs['start_time']).total_seconds(), 4)
-        stats['process'].update({'search' : {}})
-        stats['process']['search'].update({'duration' : {'start': kwargs['start_time'].isoformat(),
-                                                         'end' : kwargs['end_time'].isoformat(),
-                                                         'seconds_elapsed' : seconds_elapsed 
-                                                        }})
-        stats['process']['search'].update({'parameters' : {'similarity_mse': kwargs['similarity'],
-                                                           'rotate' : kwargs['rotate'],
-                                                           'lazy' : kwargs['lazy'],
-                                                           'processes' : kwargs['processes'],
-                                                           'chunksize' : kwargs['chunksize']                                                         
-                                                          }})
-        stats['process']['search'].update({'files_searched' : kwargs['files_searched']})
-        
-        stats['process']['search'].update({'matches_found' : {'duplicates': kwargs['duplicate_count'],
-                                                              'similar' : kwargs['similar_count']
-                                                             }})        
-        return stats
+        build_stats = {
+            'directory' : directory,
+            'total_files' : total_files+len(invalid_files),
+            'invalid_files' : {
+                'count' : len(invalid_files),
+                'logs' : invalid_files
+            },
+            'process': {
+                'build' : {
+                    'duration' : {
+                        'start' : kwargs['start_time'].isoformat(),
+                        'end' : kwargs['end_time'].isoformat(),
+                        'seconds_elapsed' : np.round((kwargs['end_time'] - kwargs['start_time']).total_seconds(), 4),
+                    },
+                    'parameters' : {
+                        'recursive' : kwargs['recursive'],
+                        'in_folder' : kwargs['in_folder'],
+                        'limit_extensions' : kwargs['limit_extensions'],
+                        'px_size' : kwargs['px_size'],
+                        'processes' : kwargs['processes'],
+                    }
+                }
+            }
+        }
+        return build_stats
+
+    def search(**kwargs):
+        # Function that generates stats for the Search process  
+        search_stats = {
+            'search' : {
+                'duration' : {
+                    'start' : kwargs['start_time'].isoformat(),
+                    'end' : kwargs['end_time'].isoformat(),
+                    'seconds_elapsed' : np.round((kwargs['end_time'] - kwargs['start_time']).total_seconds(), 4),
+                },
+                'parameters' : {
+                    'similarity_mse' : kwargs['similarity'],
+                    'rotate' : kwargs['rotate'],
+                    'same_dim' : kwargs['same_dim'],
+                    'processes' : kwargs['processes'],
+                    'chunksize' : kwargs['chunksize']
+                },
+                'files_searched' : kwargs['files_searched'],
+                'matches_found' : {
+                    'duplicates': kwargs['duplicate_count'],
+                    'similar' : kwargs['similar_count']}
+            }
+        }
+        kwargs['build_stats']['process'].update(search_stats)
+        return kwargs['build_stats']
 
 class _validate_param:
     '''
@@ -802,9 +843,6 @@ class _validate_param:
         # Function that validates the 'in_folder' input parameter
         if not isinstance(in_folder, bool):
             raise Exception('Invalid value for "in_folder" parameter: must be of type BOOL.')
-        elif not recursive and in_folder:
-            warnings.warn('Parameter "in_folder" cannot be "True" if "recursive" is set to "False". "in_folder" will be ignored.', stacklevel=2)
-            in_folder = False
         return in_folder
     
     def _limit_extensions(limit_extensions):
@@ -849,14 +887,11 @@ class _validate_param:
             raise Exception('Invalid value for "rotate" parameter: must be of type BOOL.')
         return rotate         
 
-    def _lazy(lazy, similarity):
-        # Function that validates the 'lazy' input parameter
-        if not isinstance(lazy, bool):
-            raise Exception('Invalid value for "lazy" parameter: must be of type BOOL.')
-        if lazy:
-            if similarity > 0:
-                lazy = False
-        return lazy
+    def _same_dim(same_dim, similarity):
+        # Function that validates the 'same_dim' input parameter
+        if not isinstance(same_dim, bool):
+            raise Exception('Invalid value for "same_dim" parameter: must be of type BOOL.')
+        return same_dim
 
     def _show_progress(show_progress):
         # Function that validates the 'show_progress' input parameter
@@ -867,10 +902,11 @@ class _validate_param:
     def _processes(processes):
         # Function that validates the 'processes' input parameter
         if not isinstance(processes, int):
-            if not processes == None:
-                raise Exception('Invalid value for "processes" parameter: must be of type INT.')
-            else:
-                processes = os.cpu_count()
+            raise Exception('Invalid value for "processes" parameter: must be of type INT.')
+        if processes < 1:
+            raise Exception('Invalid value for "processes" parameter: must be >= 1.')
+        if processes > os.cpu_count():
+            raise Exception('Invalid value for "processes" parameter: must be <= the number of CPU cores (os.cpu_count()).')
         return processes     
 
     def _chunksize(chunksize):
@@ -904,8 +940,9 @@ class _validate_param:
         return dir 
 
     def _kwargs(kwargs):
-        if "logs" in kwargs:
-            warnings.warn('Parameter "logs" was deprecated with difPy v4.1. Using it might lead to an exception in future versions. Consider updating your script.', FutureWarning, stacklevel=2)
+        if "lazy" in kwargs:
+            raise Exception('Parameter "-la" / "lazy" was renamed to "-dim" / "same_dim" with difPy v4.2. Please update your script.')
+
 
 class _help:
     '''
@@ -925,11 +962,15 @@ class _help:
         except:
             return x
         
-    def _strtobool(value: str) -> bool:
-        value = value.lower()
-        if value in ("y", "yes", "on", "1", "true", "t"):
+    def _strtobool(v):
+        if isinstance(v, bool):
+            return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
             return True
-        return False
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected')
         
 if __name__ == '__main__':
     # Parameters for when launching difPy via CLI
@@ -942,31 +983,20 @@ if __name__ == '__main__':
     parser.add_argument('-px', '--px_size', type=int, help='Compression size of images in pixels.', required=False, default=50)
     parser.add_argument('-s', '--similarity', type=_help._convert_str_to_int, help='Similarity grade (mse).', required=False, default='duplicates')
     parser.add_argument('-ro', '--rotate', type=lambda x: bool(_help._strtobool(x)), help='Rotate images during comparison process.', required=False, choices=[True, False], default=True)    
-    parser.add_argument('-la', '--lazy', type=lambda x: bool(_help._strtobool(x)), help='Compares image dimensions before comparison process.', required=False, choices=[True, False], default=True)    
+    parser.add_argument('-dim', '--same_dim', type=lambda x: bool(_help._strtobool(x)), help='Only compare image having the same dimensions (width x height)', required=False, choices=[True, False], default=True)    
     parser.add_argument('-mv', '--move_to', type=str, help='Output directory path of lower quality images among matches.', required=False, default=None)
     parser.add_argument('-d', '--delete', type=lambda x: bool(_help._strtobool(x)), help='Delete lower quality images among matches.', required=False, choices=[True, False], default=False)
     parser.add_argument('-sd', '--silent_del', type=lambda x: bool(_help._strtobool(x)), help='Suppress the user confirmation when deleting images.', required=False, choices=[True, False], default=False)
     parser.add_argument('-p', '--show_progress', type=lambda x: bool(_help._strtobool(x)), help='Show the real-time progress of difPy.', required=False, choices=[True, False], default=True)
-    parser.add_argument('-proc', '--processes', type=_help._convert_str_to_int, help=' Number of worker processes for multiprocessing.', required=False, default=None)
+    parser.add_argument('-proc', '--processes', type=_help._convert_str_to_int, help=' Number of worker processes for multiprocessing.', required=False, default=os.cpu_count())
     parser.add_argument('-ch', '--chunksize', type=_help._convert_str_to_int, help='Only relevant when dataset > 5k images. Sets the batch size at which the job is simultaneously processed when multiprocessing.', required=False, default=None)
-    parser.add_argument('-l', '--logs', type=lambda x: bool(_help._strtobool(x)), help='(Deprecated) Collect statistics during the process.', required=False, choices=[True, False], default=None)
+    parser.add_argument('-la', '--lazy', type=lambda x: bool(_help._strtobool(x)), help='(Deprecated) Only compare image having the same dimensions (width x height).', required=False, choices=[True, False], default=None)    
 
     args = parser.parse_args()
 
-    if args.logs != None:
-        _validate_param._kwargs(["logs"])
-
-    # initialize difPy
-    dif = build(args.directory, recursive=args.recursive, in_folder=args.in_folder, limit_extensions=args.limit_extensions, px_size=args.px_size, show_progress=args.show_progress, processes=args.processes, )
-    
-    # perform search
-    se = search(dif, similarity=args.similarity, rotate=args.rotate, lazy=args.lazy, processes=args.processes, chunksize=args.chunksize)
-
-    # create filenames for the output files
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    result_file = f'difPy_{timestamp}_results.json'
-    lq_file = f'difPy_{timestamp}_lower_quality.txt'
-    stats_file = f'difPy_{timestamp}_stats.json'
+    # validate input arguments
+    if args.lazy != None:
+        _validate_param._kwargs(["lazy"])
 
     # check if 'output_directory' parameter exists
     if args.output_directory != None:
@@ -976,22 +1006,34 @@ if __name__ == '__main__':
     else:
         dir = os.getcwd()
 
+    # check if 'move_to' and 'delete' are both given
+    if args.move_to != None and args.delete != False:
+        raise Exception(f'"move_to" and "delete" parameter are mutually exclusive. Please select one of them.')
+
+    # run difPy
+    dif = build(args.directory, recursive=args.recursive, in_folder=args.in_folder, limit_extensions=args.limit_extensions, px_size=args.px_size, show_progress=args.show_progress, processes=args.processes, )
+    se = search(dif, similarity=args.similarity, rotate=args.rotate, same_dim=args.same_dim, processes=args.processes, chunksize=args.chunksize)
+
+    # create filenames for the output files
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    result_file = f'difPy_{timestamp}_results.json'
+    lq_file = f'difPy_{timestamp}_lower_quality.txt'
+    stats_file = f'difPy_{timestamp}_stats.json'
+
     # output 'search.results' to file
     with open(os.path.join(dir, result_file), 'w') as file:
         json.dump(se.result, file)
-
     # output 'search.stats' to file
     with open(os.path.join(dir, stats_file), 'w') as file:
         json.dump(se.stats, file)
+    # output 'search.lower_quality' to file
+    with open(os.path.join(dir, lq_file), 'w') as file:
+        file.write(f"{se.lower_quality}")
 
     # check 'move_to' parameter
     if args.move_to != None:
         # move lower quality files
         se.move_to(args.move_to)
-
-    # output 'search.lower_quality' to file
-    with open(os.path.join(dir, lq_file), 'w') as file:
-        json.dump(se.lower_quality, file)
 
     # check 'delete' parameter
     if args.delete:

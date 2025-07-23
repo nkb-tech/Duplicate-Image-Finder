@@ -3,11 +3,11 @@
 # -- Project information
 
 project = 'difPy Guide'
-copyright = '2024, Elise Landman'
+copyright = '2025, Elise Landman'
 author = 'Elise Landman'
 
-release = 'v4.1.1'
-version = 'v4.1.1'
+release = 'v4.2.1'
+version = 'v4.2.1'
 
 # -- General configuration
 
@@ -18,7 +18,10 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx_rtd_theme',
+    'sphinxcontrib.googleanalytics'
 ]
+
+googleanalytics_id = 'G-X002SSZTWC'
 
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
@@ -31,6 +34,8 @@ templates_path = ['_templates']
 # -- Options for HTML output
 
 html_theme = 'sphinx_rtd_theme'
+
+html_static_path = ['_static']
 
 # -- Options for EPUB output
 epub_show_urls = 'footnote'
